@@ -1,0 +1,43 @@
+# =============================================================================
+# Local Stack
+# =============================================================================
+#
+# Architecture:
+#
+#   localhost:3000 → mcp-hass (MCP tools, no auth)
+#
+# Services:
+#   - mcp-hass: MCP server exposing Home Assistant tools
+#
+# Notes:
+#   - For users running MCP-HASS on their local machine (not internet-facing)
+#   - No authentication - assumes trusted local network
+#   - Binds to localhost only (127.0.0.1) - not exposed to network
+#   - Just the MCP backend, no reverse proxy
+#   - Connect MCP clients directly to http://localhost:3000
+#
+# Prerequisites:
+#   - .env file configured with HA_BASE_URL, HA_TOKEN
+#
+# Usage: docker compose -f compose-local.yaml up -d
+
+services:
+  mcp-hass:
+    build: .
+    container_name: mcp-hass-local
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${MCP_HOST_PORT:-3000}:3000"
+    env_file:
+      - .env
+    volumes:
+      - mcp-hass-data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:3000/health')"]
+      interval: 900s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  mcp-hass-data:

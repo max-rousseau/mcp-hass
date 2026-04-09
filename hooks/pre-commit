@@ -1,0 +1,63 @@
+#!/bin/bash
+# Pre-commit hook to detect test anti-patterns
+
+echo "🔍 Checking for test anti-patterns..."
+
+# Flag to track if any issues found
+ISSUES_FOUND=0
+
+# Get test files to check (excluding examples directory which contains intentional anti-patterns)
+TEST_FILES=$(git diff --cached --name-only | grep "^tests/" | grep -v "^tests/examples/")
+
+# Skip checks if no test files are being committed
+if [ -z "$TEST_FILES" ]; then
+    echo "✅ No test files in commit"
+    exit 0
+fi
+
+# Check for mocking private methods (excluding _make_request which is acceptable boundary mocking)
+if echo "$TEST_FILES" | xargs grep -n "patch\.object.*['\"]_" 2>/dev/null | grep -v "_make_request"; then
+    echo "❌ ERROR: Tests mocking private methods detected (patch.object with '_method')"
+    echo "   Private methods are implementation details and should not be mocked."
+    echo "   Exception: _make_request is acceptable as HTTP boundary layer mocking."
+    echo "   See TESTING_STANDARDS.md for guidance."
+    ISSUES_FOUND=1
+fi
+
+# Check for assert_called on private methods
+if echo "$TEST_FILES" | xargs grep -n "\._[a-zA-Z_]*\.assert_called" 2>/dev/null; then
+    echo "❌ ERROR: Tests asserting calls on private methods detected"
+    echo "   Testing internal method calls couples tests to implementation."
+    echo "   See TESTING_STANDARDS.md for guidance."
+    ISSUES_FOUND=1
+fi
+
+# Check for patch.multiple on 'server' or 'client' (common over-mocking pattern)
+if echo "$TEST_FILES" | xargs grep -n "patch\.multiple.*\(server\|client\)," 2>/dev/null; then
+    echo "⚠️  WARNING: patch.multiple detected on server/client"
+    echo "   This often indicates over-mocking of internal implementation."
+    echo "   Verify you're testing behavior, not implementation."
+    echo "   See TESTING_STANDARDS.md for guidance."
+    # Don't fail on warnings, just notify
+fi
+
+# Check for mocking _initialize, _register patterns (common anti-pattern)
+if echo "$TEST_FILES" | xargs grep -n "Mock().*_initialize\|Mock().*_register" 2>/dev/null; then
+    echo "⚠️  WARNING: Mocking initialization/registration methods detected"
+    echo "   Consider testing the actual initialization/registration outcomes."
+    echo "   See TESTING_STANDARDS.md for guidance."
+    # Don't fail on warnings, just notify
+fi
+
+if [ $ISSUES_FOUND -eq 1 ]; then
+    echo ""
+    echo "❌ Commit rejected due to test anti-patterns."
+    echo "   Please fix the issues above or review TESTING_STANDARDS.md"
+    echo ""
+    echo "   To bypass this check (not recommended):"
+    echo "   git commit --no-verify"
+    exit 1
+fi
+
+echo "✅ No critical test anti-patterns detected"
+exit 0
