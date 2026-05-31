@@ -306,6 +306,30 @@ class TestFindDevicesBasicFiltering:
         assert devices[0]["area_id"] == "kitchen"
 
     @pytest.mark.asyncio
+    async def test_find_devices_area_matches_area_id_slug(
+        self,
+        server_with_mocks,
+        sample_devices,
+        sample_entity_registry,
+        sample_states,
+        sample_areas,
+    ):
+        """area parameter should resolve when passed an area_id slug, not just display name."""
+        server = server_with_mocks
+        server.ha_client.get_devices.return_value = sample_devices
+        server.ha_client.get_entity_registry.return_value = sample_entity_registry
+        server.ha_client.get_all_states.return_value = sample_states
+        server.ha_client.get_areas.return_value = sample_areas
+
+        find_devices_func = server.mcp._test_tools["find_devices"]
+
+        result = await find_devices_func(area="kitchen")
+
+        devices = json.loads(result)
+        assert len(devices) == 1
+        assert devices[0]["id"] == "device2"
+
+    @pytest.mark.asyncio
     async def test_find_devices_by_name_substring(
         self, server_with_mocks, sample_devices, sample_entity_registry, sample_states
     ):

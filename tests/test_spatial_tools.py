@@ -637,6 +637,36 @@ class TestConsolidatedFindEntities:
         assert len(parsed_result) == 4
 
     @pytest.mark.asyncio
+    async def test_find_entities_area_matches_area_id_slug(
+        self,
+        server_with_mocks,
+        sample_areas_data,
+        sample_devices_data,
+        sample_entity_registry,
+        sample_states_data,
+    ):
+        """area parameter should resolve when passed an area_id slug, not just display name."""
+        server, mock_ha_client = server_with_mocks
+        mock_ha_client.session = Mock()
+        mock_ha_client.get_all_states.return_value = sample_states_data
+        mock_ha_client.get_areas.return_value = sample_areas_data
+        mock_ha_client.get_devices.return_value = sample_devices_data
+        mock_ha_client.get_entity_registry.return_value = sample_entity_registry
+
+        tool_calls = server.mcp.tool.call_args_list
+        find_entities_func = next(
+            call[0][0]
+            for call in tool_calls
+            if hasattr(call[0][0], "__name__")
+            and call[0][0].__name__ == "find_entities"
+        )
+
+        result = await find_entities_func("*", area="living_room")
+
+        parsed_result = json.loads(result)
+        assert len(parsed_result) == 4
+
+    @pytest.mark.asyncio
     async def test_find_entities_area_not_found(
         self, server_with_mocks, sample_areas_data, sample_states_data
     ):
@@ -810,6 +840,30 @@ class TestGetAreaDevices:
 
         # Use uppercase "KITCHEN" to match "Kitchen"
         result = await get_area_devices_func("KITCHEN")
+
+        parsed_result = json.loads(result)
+        assert len(parsed_result) == 1
+        assert parsed_result[0]["id"] == "device3"
+
+    @pytest.mark.asyncio
+    async def test_get_area_devices_matches_area_id_slug(
+        self, server_with_mocks, sample_areas_data, sample_devices_data
+    ):
+        """area_name parameter should resolve when passed an area_id slug."""
+        server, mock_ha_client = server_with_mocks
+        mock_ha_client.session = Mock()
+        mock_ha_client.get_areas.return_value = sample_areas_data
+        mock_ha_client.get_devices.return_value = sample_devices_data
+
+        tool_calls = server.mcp.tool.call_args_list
+        get_area_devices_func = next(
+            call[0][0]
+            for call in tool_calls
+            if hasattr(call[0][0], "__name__")
+            and call[0][0].__name__ == "get_area_devices"
+        )
+
+        result = await get_area_devices_func("kitchen")
 
         parsed_result = json.loads(result)
         assert len(parsed_result) == 1
