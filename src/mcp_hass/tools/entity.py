@@ -153,7 +153,7 @@ def register_entity_tools(ctx: "ToolContext") -> None:
         Args:
             name: Substring to match entity_id or friendly_name (use "*" for all)
             domain: Domain filter (e.g., "light", "sensor", "switch"). Omit if not filtering by domain.
-            area: Area name filter (e.g., "bedroom", "kitchen"). Omit if not filtering by area.
+            area: Area display name or area_id slug filter (e.g., "bedroom", "living_room"). Omit if not filtering by area.
             device_class: Device class filter (e.g., "temperature", "motion"). Omit if not filtering by device class.
             state: State value filter (e.g., "on", "off", "unavailable"). Omit if not filtering by state.
             attributes: Attribute filters as dict. Omit if not filtering by attributes.
@@ -187,7 +187,12 @@ def register_entity_tools(ctx: "ToolContext") -> None:
         if area:
             areas = await ctx.ha_client.get_areas()
             area_id = next(
-                (a["area_id"] for a in areas if a["name"].lower() == area.lower()),
+                (
+                    a["area_id"]
+                    for a in areas
+                    if a["name"].lower() == area.lower()
+                    or a["area_id"].lower() == area.lower()
+                ),
                 None,
             )
 

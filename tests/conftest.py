@@ -24,6 +24,24 @@ def prevent_env_file_loading(monkeypatch):
     monkeypatch.setattr(ConfigurationManager, "_load_env_file", lambda self: None)
 
 
+@pytest.fixture(autouse=True, scope="function")
+def stub_tiktoken_encoding(monkeypatch):
+    """Stub tiktoken.get_encoding so tests never hit the network.
+
+    Real tiktoken downloads BPE files from openaipublic.blob.core.windows.net
+    on first use, which breaks isolation. The stub returns an encoder whose
+    encode() yields a token count proportional to input length so existing
+    assertions (count > 0; longer text → more tokens) remain meaningful.
+    """
+    import tiktoken
+
+    class _StubEncoding:
+        def encode(self, text: str) -> list[int]:
+            return [0] * max(1, len(text) // 4)
+
+    monkeypatch.setattr(tiktoken, "get_encoding", lambda name: _StubEncoding())
+
+
 # =============================================================================
 # Configuration Fixtures
 # =============================================================================

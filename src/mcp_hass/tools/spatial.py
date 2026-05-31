@@ -68,7 +68,7 @@ def register_spatial_tools(ctx: "ToolContext") -> None:
         """Get all devices in a specific area/zone.
 
         Args:
-            area_name: Name of the area to get devices for
+            area_name: Display name or area_id slug of the area to get devices for
         """
         try:
             areas = await ctx.ha_client.get_areas()
@@ -77,6 +77,7 @@ def register_spatial_tools(ctx: "ToolContext") -> None:
                     a.get("area_id")
                     for a in areas
                     if a.get("name", "").lower() == area_name.lower()
+                    or a.get("area_id", "").lower() == area_name.lower()
                 ),
                 None,
             )

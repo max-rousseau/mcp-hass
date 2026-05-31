@@ -50,7 +50,7 @@ def register_device_tools(ctx: "ToolContext") -> None:
             name: Substring to match device name (use "*" for all)
             manufacturer: Manufacturer filter (e.g., "Philips", "Ecobee")
             model: Model filter (e.g., "Hue White Ambiance")
-            area: Area name filter (e.g., "bedroom", "kitchen")
+            area: Area display name or area_id slug filter (e.g., "bedroom", "living_room")
             select: Additional scalar fields. Valid: "manufacturer", "model", "model_id",
                 "sw_version", "hw_version", "serial_number", "via_device_id".
             expand: Nested objects to fully include. Valid: "entities" (full entity data),
@@ -90,7 +90,12 @@ def register_device_tools(ctx: "ToolContext") -> None:
         if area:
             areas = await ctx.ha_client.get_areas()
             target_area_id = next(
-                (a["area_id"] for a in areas if a["name"].lower() == area.lower()),
+                (
+                    a["area_id"]
+                    for a in areas
+                    if a["name"].lower() == area.lower()
+                    or a["area_id"].lower() == area.lower()
+                ),
                 None,
             )
             if not target_area_id:
