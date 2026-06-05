@@ -330,8 +330,15 @@ class HomeAssistantWebSocketClient:
                         f"Connecting to WebSocket: {self.base_url} (attempt {attempt + 1})"
                     )
                     ws_timeout = aiohttp.ClientWSTimeout(ws_close=self.timeout)
+                    # max_msg_size=0 disables aiohttp's 4 MiB cap. The HA
+                    # entity/device registry response routinely exceeds 4 MiB
+                    # on installs with many entities, and the peer is a
+                    # trusted local Home Assistant instance.
                     self.websocket = await self.session.ws_connect(
-                        self.base_url, timeout=ws_timeout, ssl=self._ssl_context
+                        self.base_url,
+                        timeout=ws_timeout,
+                        ssl=self._ssl_context,
+                        max_msg_size=0,
                     )
 
                     # Wait for auth_required message
