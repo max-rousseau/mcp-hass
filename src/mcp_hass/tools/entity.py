@@ -8,7 +8,7 @@ Provides entity discovery and history retrieval:
 """
 
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from mcp.types import ToolAnnotations
@@ -60,8 +60,11 @@ def register_entity_tools(ctx: "ToolContext") -> None:
             }
         """
         try:
-            start_time = datetime.now() - timedelta(hours=hours)
-            raw_history = await ctx.ha_client.get_history(entity_id, start_time)
+            now = datetime.now(timezone.utc)
+            start_time = now - timedelta(hours=hours)
+            raw_history = await ctx.ha_client.get_history(
+                entity_id, start_time, end_time=now
+            )
 
             if not raw_history or not raw_history[0]:
                 return json.dumps(

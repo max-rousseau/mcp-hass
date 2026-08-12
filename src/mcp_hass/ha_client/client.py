@@ -110,7 +110,7 @@ graph TB
 
 import aiohttp
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Union
 from urllib.parse import urljoin, urlparse
 
@@ -122,6 +122,27 @@ from .exceptions import (
     HomeAssistantValidationError,
 )
 from .websocket_client import HomeAssistantWebSocketClient
+
+
+def _to_utc_iso(value: datetime) -> str:
+    """Normalize a datetime to a URL-safe UTC ISO 8601 string.
+
+    Converts naive datetimes to UTC (assuming they already represent UTC)
+    and aware datetimes to UTC, then renders the offset as the ``Z``
+    designator instead of ``+00:00``. HA's ciso8601 parser and DATETIME_RE
+    both accept ``Z``, and unlike ``+00:00`` it survives untouched through
+    aiohttp/yarl URL encoding in both the path and the query string (a
+    literal ``+`` is decoded by the server as a space).
+
+    Args:
+        value: Datetime to normalize (naive or timezone-aware)
+
+    Returns:
+        UTC ISO 8601 string ending in ``Z``
+    """
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 class HomeAssistantClient:
@@ -554,7 +575,7 @@ class HomeAssistantClient:
         Args:
             entity_id: Entity to get history for
             start_time: Start time for history query
-            end_time: Optional end time (defaults to now)
+            end_time: Optional end time (defaults to start_time + 1 day, per HA)
 
         Returns:
             List of historical state changes
@@ -564,11 +585,11 @@ class HomeAssistantClient:
                 f"Invalid entity ID format: {entity_id}", field="entity_id"
             )
 
-        start_iso = start_time.isoformat()
+        start_iso = _to_utc_iso(start_time)
         endpoint = f"/api/history/period/{start_iso}?filter_entity_id={entity_id}"
 
         if end_time is not None:
-            end_iso = end_time.isoformat()
+            end_iso = _to_utc_iso(end_time)
             endpoint += f"&end_time={end_iso}"
 
         return await self._make_request("GET", endpoint)
