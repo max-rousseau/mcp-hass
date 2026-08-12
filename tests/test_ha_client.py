@@ -5,10 +5,14 @@ Following TDD principles to define the expected behavior before implementation.
 Tests cover connection management, API calls, error handling, and authentication.
 """
 
+import re
+from urllib.parse import urljoin
+
 import pytest
 import aiohttp
+import yarl
 from unittest.mock import AsyncMock, Mock, patch
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 from src.mcp_hass.ha_client.client import HomeAssistantClient
 from src.mcp_hass.ha_client.exceptions import (
@@ -251,7 +255,8 @@ class TestHomeAssistantClientAPIRequests:
             result = await ha_client.get_history(entity_id, start_time)
 
             expected_url = (
-                f"/api/history/period/2025-01-20T10:00:00?filter_entity_id={entity_id}"
+                "/api/history/period/2025-01-20T10:00:00Z"
+                f"?filter_entity_id={entity_id}"
             )
             mock_request.assert_called_once_with("GET", expected_url)
             assert result == history_data
@@ -878,6 +883,93 @@ class TestHomeAssistantClientHistoryWithEndTime:
                 await ha_client.get_history("invalid", start_time)
 
             await ha_client.disconnect()
+
+
+class TestHomeAssistantClientHistoryTimezone:
+    """Regression tests for timezone-aware timestamps sent to the history API.
+
+    HA parses offset-less timestamps in HA's own local timezone, not UTC.
+    Every timestamp sent to /api/history/period/ must carry an explicit UTC
+    offset so the query window matches what the caller intended. The offset
+    must be rendered as the ``Z`` designator rather than ``+00:00`` because
+    aiohttp/yarl send a literal ``+`` in the query string, which the server
+    decodes as a space, corrupting the offset (HA then returns HTTP 400).
+
+    ``end_time`` lands in the query string, so its wire-level assertions
+    parse the endpoint through ``yarl.URL`` exactly as the HTTP client would,
+    to confirm the exact bytes the server would see after query decoding.
+    """
+
+    NAIVE_TIMESTAMP_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:[?&]|$)")
+
+    @pytest.mark.asyncio
+    async def test_get_history_naive_start_time_gains_utc_offset(self, ha_client):
+        """A naive start_time must be sent with an explicit Z (UTC) offset."""
+        naive_start_time = datetime(2025, 1, 20, 10, 0, 0)
+        assert naive_start_time.tzinfo is None
+
+        with patch.object(
+            ha_client, "_make_request", new_callable=AsyncMock
+        ) as mock_request:
+            mock_request.return_value = []
+
+            await ha_client.get_history("sensor.temperature", naive_start_time)
+
+            endpoint = mock_request.call_args[0][1]
+            assert "2025-01-20T10:00:00Z" in endpoint
+            assert "+00:00" not in endpoint
+            assert not self.NAIVE_TIMESTAMP_RE.search(endpoint)
+
+    @pytest.mark.asyncio
+    async def test_get_history_naive_end_time_gains_utc_offset(self, ha_client):
+        """A naive end_time must be sent with an explicit Z (UTC) offset.
+
+        Also asserts at the wire level: parsing the endpoint the client
+        would send through yarl.URL (as aiohttp does internally) must yield
+        an end_time query value equal to the exact Z-suffixed string. This
+        catches the class of bug where a literal '+' survives into the URL
+        and the server decodes '+00:00' as ' 00:00'.
+        """
+        start_time = datetime(2025, 1, 20, 10, 0, 0, tzinfo=timezone.utc)
+        naive_end_time = datetime(2025, 1, 20, 12, 0, 0)
+        assert naive_end_time.tzinfo is None
+
+        with patch.object(
+            ha_client, "_make_request", new_callable=AsyncMock
+        ) as mock_request:
+            mock_request.return_value = []
+
+            await ha_client.get_history(
+                "sensor.temperature", start_time, naive_end_time
+            )
+
+            endpoint = mock_request.call_args[0][1]
+            assert "end_time=2025-01-20T12:00:00Z" in endpoint
+            assert "+00:00" not in endpoint
+            assert not self.NAIVE_TIMESTAMP_RE.search(endpoint)
+
+            url = yarl.URL(urljoin(ha_client.base_url, endpoint))
+            assert url.query["end_time"] == "2025-01-20T12:00:00Z"
+
+    @pytest.mark.asyncio
+    async def test_get_history_aware_start_time_converted_to_utc(self, ha_client):
+        """An aware start_time in a non-UTC offset is converted to UTC."""
+        aware_start_time = datetime(
+            2025, 1, 20, 12, 0, 0, tzinfo=timezone(timedelta(hours=2))
+        )
+
+        with patch.object(
+            ha_client, "_make_request", new_callable=AsyncMock
+        ) as mock_request:
+            mock_request.return_value = []
+
+            await ha_client.get_history("sensor.temperature", aware_start_time)
+
+            endpoint = mock_request.call_args[0][1]
+            # 12:00+02:00 == 10:00Z
+            assert "2025-01-20T10:00:00Z" in endpoint
+            assert "+00:00" not in endpoint
+            assert not self.NAIVE_TIMESTAMP_RE.search(endpoint)
 
 
 class TestHomeAssistantClientWebSocketDisconnect:

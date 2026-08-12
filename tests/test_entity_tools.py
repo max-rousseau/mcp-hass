@@ -10,7 +10,7 @@ import logging
 
 import pytest
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, Mock, patch
 
 from src.mcp_hass.server import MCPHomeAssistantServer
@@ -166,7 +166,7 @@ class TestGetEntityHistory:
 
         # Mock datetime.now to ensure consistent testing
         with patch("src.mcp_hass.tools.entity.datetime") as mock_datetime:
-            now = datetime(2025, 1, 20, 12, 0, 0)
+            now = datetime(2025, 1, 20, 12, 0, 0, tzinfo=timezone.utc)
             mock_datetime.now.return_value = now
             mock_datetime.side_effect = lambda *args, **kwargs: datetime(
                 *args, **kwargs
@@ -174,10 +174,15 @@ class TestGetEntityHistory:
 
             result = await get_entity_history_func("sensor.temperature")
 
+            # datetime.now() must be called with timezone.utc, not naive
+            mock_datetime.now.assert_called_once_with(timezone.utc)
+
             # Verify the start_time was calculated correctly (24 hours ago)
+            # and that both start_time and end_time carry tzinfo
             expected_start_time = now - timedelta(hours=24.0)
+            assert expected_start_time.tzinfo is not None
             mock_ha_client.get_history.assert_called_once_with(
-                "sensor.temperature", expected_start_time
+                "sensor.temperature", expected_start_time, end_time=now
             )
 
             # Verify optimized response format
@@ -203,7 +208,7 @@ class TestGetEntityHistory:
         get_entity_history_func = server.mcp._test_tools["get_entity_history"]
 
         with patch("src.mcp_hass.tools.entity.datetime") as mock_datetime:
-            now = datetime(2025, 1, 20, 12, 0, 0)
+            now = datetime(2025, 1, 20, 12, 0, 0, tzinfo=timezone.utc)
             mock_datetime.now.return_value = now
             mock_datetime.side_effect = lambda *args, **kwargs: datetime(
                 *args, **kwargs
@@ -211,9 +216,12 @@ class TestGetEntityHistory:
 
             result = await get_entity_history_func("sensor.temperature", hours=12.0)
 
+            mock_datetime.now.assert_called_once_with(timezone.utc)
+
             expected_start_time = now - timedelta(hours=12.0)
+            assert expected_start_time.tzinfo is not None
             mock_ha_client.get_history.assert_called_once_with(
-                "sensor.temperature", expected_start_time
+                "sensor.temperature", expected_start_time, end_time=now
             )
 
             # Verify optimized response format
@@ -231,7 +239,7 @@ class TestGetEntityHistory:
         get_entity_history_func = server.mcp._test_tools["get_entity_history"]
 
         with patch("src.mcp_hass.tools.entity.datetime") as mock_datetime:
-            now = datetime(2025, 1, 20, 12, 0, 0)
+            now = datetime(2025, 1, 20, 12, 0, 0, tzinfo=timezone.utc)
             mock_datetime.now.return_value = now
             mock_datetime.side_effect = lambda *args, **kwargs: datetime(
                 *args, **kwargs
@@ -242,9 +250,12 @@ class TestGetEntityHistory:
             # Verify result is valid JSON
             assert result is not None
 
+            mock_datetime.now.assert_called_once_with(timezone.utc)
+
             expected_start_time = now - timedelta(hours=1.5)
+            assert expected_start_time.tzinfo is not None
             mock_ha_client.get_history.assert_called_once_with(
-                "sensor.temperature", expected_start_time
+                "sensor.temperature", expected_start_time, end_time=now
             )
 
     @pytest.mark.asyncio
